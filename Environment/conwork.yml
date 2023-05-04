@@ -1,0 +1,17 @@
+- hosts: Worker
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: no
+  connection: ssh
+
+  tasks:
+     - name: Copy the file from ansible host to worker nodes
+       copy: src=/home/ubuntu/playbooks/config dest=/home/ubuntu
+
+     - name: make directory and copy required file to it
+       shell: |
+        sudo su -c 'mkdir -p $HOME/.kube' ubuntu
+        sudo su -c 'mv /home/ubuntu/config /home/ubuntu/.kube' ubuntu
+        sudo su -c 'sudo chown $(id -u):$(id -g) $HOME/.kube/config' ubuntu

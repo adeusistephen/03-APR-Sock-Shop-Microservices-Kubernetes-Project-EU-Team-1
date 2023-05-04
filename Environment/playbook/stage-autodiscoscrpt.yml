@@ -1,0 +1,63 @@
+---
+ - hosts: localhost
+   connection: local
+   gather_facts: no
+   
+
+
+   tasks:
+     - name: Get Workers Inventory IP
+       set_fact: node="{{ groups['Worker'] | join(',')}}"
+
+     - name: Store Worker Inventory IP in a file
+       shell: |
+         sudo echo "WorkerInventory: {{(node.split(','))}}" > ~/playbooks/WorkerInventoryIp.yml
+
+     - include_vars: ~/playbooks/WorkerInventoryIp.yml
+
+     - name: Get list of running Worker EC2 instance IP
+       ec2_instance_info:
+         region: eu-west-3
+         filters:
+           "tag:Name": ["stage-worker", "worker-node1"]
+       register: ec2_instance_info
+     - set_fact:
+         msg: "{{ ec2_instance_info | json_query('instances[*].private_ip_address') }}"
+     - name : Store Worker Console IP in a file
+       shell: |
+        sudo echo "WorkerConsole: {{msg}}" > ~/playbooks/WorkerConsoleIP.yml
+
+     - include_vars: ~/playbooks/WorkerConsoleIP.yml
+
+     - name: loop through inventory hostnames
+       debug:
+         msg: "{{item}}"
+       with_inventory_hostnames: Worker
+       register: hostip
+     
+     - name: remove host ip's
+       lineinfile:
+         path: /etc/ansible/hosts
+         regexp: "{{item}}"
+         line: ''
+       with_inventory_hostnames: Worker
+
+     - name: remove unnecessary empty lines
+       lineinfile:
+         path: /etc/ansible/hosts
+         regexp: ^\n
+         state: absent
+       with_inventory_hostnames: Worker
+
+     - name: update new inventory file
+       shell: |
+          echo {% for ip in WorkerConsole%}
+          "{{ip}} ansible_ssh_private_key_file=/home/ubuntu/PACUJPEU1-key\n" {%endfor%} >> /etc/ansible/stage_hosts
+
+     - meta: refresh_inventory
+
+     - name: Pause for 10 seconds to build app cache
+       wait_for:
+         timeout : 20
+ - import_playbook: /home/ubuntu/playbooks/auto_join-workers.yml
+   ignore_errors: yes
